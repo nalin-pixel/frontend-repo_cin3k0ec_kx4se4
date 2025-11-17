@@ -1,23 +1,34 @@
 import { useEffect, useState } from 'react'
 
 export default function Dashboard(){
-  const [email, setEmail] = useState('student@example.com')
+  const [email] = useState('student@example.com')
   const [user, setUser] = useState(null)
   const [recs, setRecs] = useState([])
   const [path, setPath] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
-  useEffect(()=>{ /* auto sign up and bootstrap */ init() },[])
+  useEffect(()=>{ init() },[])
 
   async function init(){
-    await fetch(base + '/bootstrap', { method: 'POST' })
-    const u = await fetch(base + '/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Student', email }) }).then(r=> r.json())
-    setUser(u.user)
-    await fetch(base + `/path/init`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: u.user._id, goals: 'Master DSA', interests: ['arrays','sorting'] }) })
-    const p = await fetch(base + `/path?userId=${u.user._id}`).then(r=> r.json())
-    setPath(p)
-    const rec = await fetch(base + `/recommendations?userId=${u.user._id}`).then(r=> r.json())
-    setRecs(rec.items || [])
+    try {
+      setLoading(true)
+      setError('')
+      await fetch(base + '/bootstrap', { method: 'POST' })
+      const u = await fetch(base + '/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Student', email }) }).then(r=> r.json())
+      if (!u.user) throw new Error('Signup failed')
+      setUser(u.user)
+      await fetch(base + `/path/init`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: u.user._id, goals: 'Master DSA', interests: ['arrays','sorting'] }) })
+      const p = await fetch(base + `/path?userId=${u.user._id}`).then(r=> r.json())
+      setPath(p)
+      const rec = await fetch(base + `/recommendations?userId=${u.user._id}`).then(r=> r.json())
+      setRecs(rec.items || [])
+    } catch (e){
+      setError(e.message || 'Something went wrong')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -31,20 +42,29 @@ export default function Dashboard(){
           <div className="text-sm text-gray-600">{user?.email}</div>
         </div>
 
+        {error && (
+          <div className="mt-4 p-3 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm">{error}</div>
+        )}
+
         <div className="mt-8 grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 p-5 rounded-xl bg-white border border-gray-200">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold">Recommendations</h2>
+              {loading && <div className="text-xs text-gray-500">Loading…</div>}
             </div>
             <div className="mt-4 grid sm:grid-cols-2 gap-4">
-              {recs.length === 0 && (
+              {!loading && recs.length === 0 && (
                 <div className="text-gray-500">No recommendations yet. Completing assessments will unlock better picks.</div>
               )}
               {recs.map((it, i)=> (
                 <div key={i} className="p-4 rounded-lg border border-gray-200">
-                  <div className="text-xs text-blue-600 font-medium">{it.type.toUpperCase()}</div>
-                  <div className="mt-1 font-semibold">{it.id}</div>
+                  <div className="text-xs text-blue-600 font-medium">{(it.type||'resource').toUpperCase()}</div>
+                  <div className="mt-1 font-semibold">{it.title || it.id}</div>
+                  {it.topic && <div className="mt-1 text-xs text-blue-700">Topic: {it.topic}</div>}
                   <div className="mt-1 text-sm text-gray-600">{it.explanation}</div>
+                  {it.url && (
+                    <a href={it.url} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-sm text-blue-700 hover:underline">Open resource</a>
+                  )}
                 </div>
               ))}
             </div>
@@ -52,8 +72,8 @@ export default function Dashboard(){
           <div className="p-5 rounded-xl bg-white border border-gray-200">
             <h2 className="font-semibold">Your Path</h2>
             <div className="mt-3 space-y-3">
-              {!path && <div className="text-gray-500 text-sm">Loading your path...</div>}
-              {path && path.items && path.items.map((pi)=> (
+              {loading && <div className="text-gray-500 text-sm">Loading your path...</div>}
+              {!loading && path && path.items && path.items.map((pi)=> (
                 <div key={pi.id} className="p-3 rounded-lg border border-gray-200 flex items-center justify-between">
                   <div className="text-sm font-medium">{pi.type}: {pi.id.slice(0,6)}...</div>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">{pi.status}</span>
@@ -61,6 +81,10 @@ export default function Dashboard(){
               ))}
             </div>
           </div>
+        </div>
+
+        <div className="mt-8">
+          <button onClick={init} disabled={loading} className="px-4 py-2 rounded-md bg-gray-900 text-white disabled:opacity-50">Refresh data</button>
         </div>
       </div>
     </section>
